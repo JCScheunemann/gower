@@ -1,8 +1,9 @@
 from scipy.sparse import issparse
 import numpy as np
 import pandas as pd
+import joblib as jb
 
-def gower_matrix(data_x, data_y=None, weight=None, cat_features=None):  
+def gower_matrix(data_x, data_y=None, weight=None, cat_features=None, n_jobs=1):  
     
     # function checks
     X = data_x
@@ -81,24 +82,48 @@ def gower_matrix(data_x, data_y=None, weight=None, cat_features=None):
     
    # print(X_cat,X_num,Y_cat,Y_num)
     
-    for i in range(x_n_rows):          
-        j_start= i        
-        if x_n_rows != y_n_rows:
-            j_start = 0
-        # call the main function
-        res = gower_get(X_cat[i,:], 
-                          X_num[i,:],
-                          Y_cat[j_start:y_n_rows,:],
-                          Y_num[j_start:y_n_rows,:],
-                          weight_cat,
-                          weight_num,
-                          weight_sum,
-                          cat_features,
-                          num_ranges,
-                          num_max) 
-        #print(res)
-        out[i,j_start:]=res
-        if x_n_rows == y_n_rows: out[i:,j_start]=res
+    if n_jobs==1:
+        for i in range(x_n_rows):          
+            j_start= 0 if x_n_rows != y_n_rows else i
+            # call the main function
+            res = gower_get(X_cat[i,:], 
+                              X_num[i,:],
+                              Y_cat[j_start:y_n_rows,:],
+                              Y_num[j_start:y_n_rows,:],
+                              weight_cat,
+                              weight_num,
+                              weight_sum,
+                              cat_features,
+                              num_ranges,
+                              num_max) 
+            #print(res)
+            out[i,j_start:]=res
+            if x_n_rows == y_n_rows: out[i:,j_start]=res
+    else:
+        def run_gower_get_i(i):
+            j_start= 0 if x_n_rows != y_n_rows else i
+            return gower_get(X_cat[i,:], 
+                              X_num[i,:],
+                              Y_cat[j_start:y_n_rows,:],
+                              Y_num[j_start:y_n_rows,:],
+                              weight_cat,
+                              weight_num,
+                              weight_sum,
+                              cat_features,
+                              num_ranges,
+                              num_max) 
+        ret = jb.Parallel(
+                        n_jobs=n_jobs, 
+                        return_as="generator"
+                    )(
+                        jb.delayed(run_gower_get_i)(i
+                        )  for i in range(x_n_rows)
+                    )
+        ret = list(ret)
+        for i in range(x_n_rows): 
+            j_start = 0 if x_n_rows != y_n_rows else i
+            out[i,j_start:]=ret[i]
+            if x_n_rows == y_n_rows: out[i:,j_start]=ret[i]
         
     return out
 
